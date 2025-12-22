@@ -3,6 +3,9 @@ title: "6.5 Overfitting, Regularization, and IC"
 output: pdf
 ---
 
+Informative priors reduce overfitting by reducing the sensitivity of a model to a sample. Some
+of the information in a sample is irregular, not a recurring feature of the process of interest.
+
 ## Model Comparison
 Remove NAs, rescale one of the explanatory vars.
 ```{r}
