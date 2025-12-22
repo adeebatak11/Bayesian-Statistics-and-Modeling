@@ -1,0 +1,80 @@
+---
+title: "6.5 Overfitting, Regularization, and IC"
+output: pdf
+---
+
+## Model Comparison
+Remove NAs, rescale one of the explanatory vars.
+```{r}
+library(rethinking)
+library(tidyverse)
+data(milk)
+d <- milk
+d <- d %>% filter(complete.cases(d)) %>% 
+  mutate(neocortex = neocortex.perc/100)
+```
+
+Four models with flats priors (i.e. no regularization) and different number of parameters.
+Note: using log and then exp for sigma is a way to constraint the std deviation of the outcome to be positive.
+```{r}
+a.start <- mean(d$kcal.per.g)
+sigma.start <- log(sd(d$kcal.per.g))
+m1 <- quap(
+  alist(
+    kcal.per.g~dnorm(a, exp(log.sigma))
+  ),
+  data = d, start = list(a = a.start, log.sigma = sigma.start)
+)
+
+m2 <- quap(
+  alist(
+    kcal.per.g~dnorm(mu, exp(log.sigma)),
+    mu <-  a+bn*neocortex
+  ),
+  data = d, start = list(a = a.start, bn = 0, log.sigma = sigma.start)
+)
+
+m3 <- quap(
+  alist(
+    kcal.per.g~dnorm(mu, exp(log.sigma)),
+    mu <-  a+bm*log(mass)
+  ),
+  data = d, start = list(a = a.start, bm = 0, log.sigma = sigma.start)
+)
+
+m4 <- quap(
+  alist(
+    kcal.per.g~dnorm(mu, exp(log.sigma)),
+    mu <-  a+bn*neocortex+bm*log(mass)
+  ),
+  data = d, start = list(a = a.start, bn = 0, bm = 0, log.sigma = sigma.start)
+)
+```
+
+Now, with 4 sets of estimates and 4 deviances, in hand, we'll look at: comparing the models on the basis of WAIC values and on the basis of parameter estimates.
+
+Goal is to see how predictions and estimates change as predictors are added and subtracted from the model.
+
+### Comparing WAIC values
+```{r}
+WAIC(m4)
+milk.models <- compare(m1, m2, m3, m4)
+milk.models 
+```
+WAIC & SE: the WAIC estimate and its std error. smaller WAIC, better estimand out-of-sample deviance.
+
+dWAIC: difference between each WAIC and the lowest WAIC. note that since only relative deviance matters, this column shows differences in that relative fashion.
+
+dSE: std. error of difference between each WAIC and the top-ranked model (lowest WAIC).
+
+pWAIC: estimated effective number of parameters. provides a clue about how flexible each model is in fitting the sample.
+
+weight: Akaike weight, they are transformed information criterion values. an estimate of the probability that the model will make the best predictions on new data, conditional on the set of models being considered.
+
+```{r}
+plot(milk.models, SE = TRUE, dSE = TRUE)
+```
+In the plot above, the filled points are in-sample deviance, the open points are WAIC. The std error of each WAIC is the dark line segment. The dWAIC & dSE are the triangles and the grey line.
+
+### Comparing estimates
+In addition to comparing models on the basis of expected test deviance, it is useful compare them on the basis of parameter estimates. 
