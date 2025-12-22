@@ -1,0 +1,168 @@
+---
+title: "5.1.3. Plotting multivariate posteriors"
+output: pdf
+---
+
+## Predictor Residual Plots
+Suppose we have a multivariate model of divorce rate, two predictors:
+marriage rate & median age at marriage.
+For computing predictor residuals for marriage rate, this is what we need:
+```{r}
+library(rethinking)
+data(WaffleDivorce)
+d <- WaffleDivorce
+
+# standardize variables
+d$D <- standardize( d$Divorce )
+d$M <- standardize( d$Marriage )
+d$A <- standardize( d$MedianAgeMarriage )
+
+model <- map(
+  alist(
+    M~dnorm(mu, sigma),
+    mu <-  a+b*A,
+    a~dnorm(0,10),
+    b~dnorm(0,1),
+    sigma~dunif(0,10)
+  ),
+  data = d
+)
+```
+
+Then we compute the residuals by subtracting the observed marriage rate in each state from the predicted rate (here based on median age at marriage).
+```{r}
+mu <- coef(model)['a'] + coef(model)['b']*d$A
+
+#residual
+M.resid <- d$M - mu
+
+plot(M~A, d, col = rangi2)
+abline(model)
+#loop over states
+for (i in 1:length(M.resid)){
+  x <- d$A[i]
+  y <- d$M[i]
+  lines(c(x,x), c(mu[i],y), lwd = 0.5, col = col.alpha("black", 0.7))
+}
+```
+
+Each grey line in the plot is a residual, the distance of each observed marriage rate from the expected value, attempting to predict marriage rate with the median age at marriage alone.
+
+## Counterfactual plots
+1. plot showing the impact of changes in marriage rate on predictions
+```{r}
+data(WaffleDivorce)
+d <- WaffleDivorce
+
+# standardize variables
+d$D <- standardize( d$Divorce )
+d$M <- standardize( d$Marriage )
+d$A <- standardize( d$MedianAgeMarriage)
+model <- quap(
+    alist(
+        D ~ dnorm( mu , sigma ) ,
+        mu <- a + bM*M + bA*A ,
+        a ~ dnorm( 0 , 0.2 ) ,
+        bM ~ dnorm( 0 , 0.5 ) ,
+        bA ~ dnorm( 0 , 0.5 ) ,
+        sigma ~ dexp( 1 )
+    ) , data = d )
+
+#prepare new counter-factual data
+A.avg <- mean(d$A)
+M.seq <- seq(from = -3, to = 3 , length.out = 30)
+pred.data <- data.frame(M = M.seq,
+                        A = A.avg)
+
+# compute counterfactual mean divorce (mu)
+mu <- link(model, data = pred.data)
+mu.mean <- apply(mu, 2, mean)
+mu.PI <- apply(mu, 2, PI)
+
+#simulated counterfactual divorce outcomes
+R.sim <- sim(model, data = pred.data, n = 1e4)
+R.PI <- apply(R.sim, 2, PI)
+
+# display predictions, hiding raw data with type = "n"
+plot(D~M, data = d, type = "n")
+mtext("Median Age Marriage = 0")
+lines(M.seq, mu.mean)
+shade(mu.PI, M.seq)
+shade(R.PI, M.seq)
+```
+2. plot showing the impact of changes in marriage age on predictions
+```{r}
+data(WaffleDivorce)
+d <- WaffleDivorce
+
+# standardize variables
+d$D <- standardize( d$Divorce )
+d$M <- standardize( d$Marriage )
+d$A <- standardize( d$MedianAgeMarriage)
+model <- quap(
+    alist(
+        D ~ dnorm( mu , sigma ) ,
+        mu <- a + bM*M + bA*A ,
+        a ~ dnorm( 0 , 0.2 ) ,
+        bM ~ dnorm( 0 , 0.5 ) ,
+        bA ~ dnorm( 0 , 0.5 ) ,
+        sigma ~ dexp( 1 )
+    ) , data = d )
+
+#prepare new counter-factual data
+M.avg <- mean(d$M)
+A.seq <- seq(from = -3, to = 3 , length.out = 30)
+pred.data <- data.frame(M = M.avg,
+                        A = A.seq)
+
+# compute counterfactual mean divorce (mu)
+mu <- link(model, data = pred.data)
+mu.mean <- apply(mu, 2, mean)
+mu.PI <- apply(mu, 2, PI)
+
+#simulated counterfactual divorce outcomes
+R.sim <- sim(model, data = pred.data, n = 1e4)
+R.PI <- apply(R.sim, 2, PI)
+
+# display predictions, hiding raw data with type = "n"
+plot(D~A, data = d, type = "n")
+mtext("Median Age Marriage = 0")
+lines(A.seq, mu.mean)
+shade(mu.PI, A.seq)
+shade(R.PI, A.seq)
+```
+
+## 3. Posterior Prediction Plots
+Two purposes: 1. Did the model fit correctly? 2. How does the model fail?
+```{r}
+data(WaffleDivorce)
+d <- WaffleDivorce
+d$D <- standardize( d$Divorce )
+d$M <- standardize( d$Marriage )
+d$A <- standardize( d$MedianAgeMarriage)
+model <- quap(
+    alist(
+        D ~ dnorm( mu , sigma ) ,
+        mu <- a + bM*M + bA*A ,
+        a ~ dnorm( 0 , 0.2 ) ,
+        bM ~ dnorm( 0 , 0.5 ) ,
+        bA ~ dnorm( 0 , 0.5 ) ,
+        sigma ~ dexp( 1 )
+    ) , data = d )
+
+mu <- link(model)
+
+mu.mean <- apply(mu, 2, mean)
+mu.PI <- apply(mu,2, PI)
+
+divorce.sim <- sim(model, n=1e4)
+divorce.PI <- apply(divorce.sim, 2, PI)
+
+plot( mu.mean ~ d$Divorce , col=rangi2 , ylim=range(mu.PI) ,
+    xlab="Observed divorce" , ylab="Predicted divorce" )
+abline( a=0 , b=1 , lty=2 )
+for ( i in 1:nrow(d) ){
+  lines( rep(d$Divorce[i],2) , c(mu.PI[1,i] , mu.PI[2,i]),col=rangi2 )
+}
+```
+

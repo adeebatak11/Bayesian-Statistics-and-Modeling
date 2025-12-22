@@ -1,0 +1,215 @@
+---
+title: "5. Multivariate Linear Models"
+output: html_document
+---
+
+## 5.1 Spurious Association
+```{r}
+# load data and copy
+library(rethinking)
+data(WaffleDivorce)
+d <- WaffleDivorce
+
+# standardize variables
+d$D <- standardize( d$Divorce )
+d$M <- standardize( d$Marriage )
+d$A <- standardize( d$MedianAgeMarriage )
+
+## R code 5.2
+sd( d$MedianAgeMarriage )
+
+## R code 5.3
+m5.1 <- quap(
+    alist(
+        D ~ dnorm( mu , sigma ) ,
+        mu <- a + bA * A ,
+        a ~ dnorm( 0 , 0.2 ) ,
+        bA ~ dnorm( 0 , 0.5 ) ,
+        sigma ~ dexp( 1 )
+    ) , data = d )
+
+## R code 5.4
+set.seed(10)
+prior <- extract.prior( m5.1 )
+mu <- link( m5.1 , post=prior , data=list( A=c(-2,2) ) )
+plot( NULL , xlim=c(-2,2) , ylim=c(-2,2) )
+for ( i in 1:50 ) lines( c(-2,2) , mu[i,] , col=col.alpha("black",0.4) )
+
+## R code 5.5
+# compute percentile interval of mean
+A_seq <- seq( from=-3 , to=3.2 , length.out=30 )
+mu <- link( m5.1 , data=list(A=A_seq) )
+mu.mean <- apply( mu , 2, mean )
+mu.PI <- apply( mu , 2 , PI )
+
+# plot it all
+plot( D ~ A , data=d , col=rangi2 )
+lines( A_seq , mu.mean , lwd=2 )
+shade( mu.PI , A_seq )
+```
+## 5.2 Masked Relationships
+```{r}
+library(rethinking)
+data(milk)
+d <- milk
+str(d)
+
+d$K <- standardize( d$kcal.per.g )
+d$N <- standardize( d$neocortex.perc )
+d$M <- standardize( log(d$mass) )
+
+dcc <- d[ complete.cases(d$K,d$N,d$M) , ]
+
+m5.5 <- quap(
+    alist(
+        kcal.per.g  ~ dnorm( mu , sigma ) ,
+        mu <- a + bN*neocortex.perc ,
+        a ~ dnorm( 0 , 1 ) ,
+        bN ~ dnorm( 0 , 1 ) ,
+        sigma ~ dunif( 0,1 )
+    ) , data=dcc )
+precis(m5.5, digits = 3)
+
+#plot
+np.seq <- 1:100
+pred_data <- data.frame(neocortex.perc = np.seq)
+
+mu <- link(m5.5, data = pred_data, n = 1e4)
+mu.mean <- apply(mu, 2, mean)
+mu.PI <- apply(mu, 2,  PI)
+
+plot(kcal.per.g~neocortex.perc, data = dcc, col = rangi2)
+lines(np.seq, mu.mean)
+lines(np.seq, mu.PI[1,], lty = 2)
+lines(np.seq, mu.PI[2,], lty = 2)
+```
+as is clear above, posterior mean for coefficient of neocortex.perc is quite small. 
+now, let's try log of female body mass:
+```{r}
+dcc$log.mass <- log(dcc$mass)
+m5.6 <- map(
+  alist(
+        kcal.per.g  ~ dnorm( mu , sigma ) ,
+        mu <- a + bm*log.mass ,
+        a ~ dnorm( 0 , 100 ) ,
+        bm ~ dnorm( 0 , 1 ) ,
+        sigma ~ dunif( 0,1 )
+    ) , data=dcc )
+precis(m5.6, digits = 3)
+
+
+#plot
+log.mass.seq <- seq(-2, 6, length.out = 100)
+pred_data <- data.frame(log.mass = log.mass.seq )
+
+mu <- link(m5.6, data = pred_data, n = 1e4)
+mu.mean <- apply(mu, 2, mean)
+mu.PI <- apply(mu, 2,  PI)
+
+plot(kcal.per.g~log.mass, data = dcc, col = rangi2)
+lines(log.mass.seq, mu.mean)
+lines(log.mass.seq, mu.PI[1,], lty = 2)
+lines(log.mass.seq, mu.PI[2,], lty = 2)
+```
+This influence seems stronger than that of neocortex percent but still, it's quite uncertain with a wide CI. 
+
+Now, let's do a plot with both the variables.
+
+```{r}
+library(rethinking)
+data(milk)
+d <- milk
+d$K <- standardize( d$kcal.per.g )
+d$N <- standardize( d$neocortex.perc )
+d$M <- standardize( log(d$mass) )
+
+dcc <- d[ complete.cases(d$K,d$N,d$M) , ]
+dcc$log.mass <- log(dcc$mass)
+
+m5.7 <- quap(
+  alist(
+    kcal.per.g~dnorm(mu, sigma),
+    mu <- a+bn*neocortex.perc+bm*log.mass,
+    a~dnorm(0,100),
+    bn~dnorm(0,1),
+    bm~dnorm(0,1),
+    sigma~dunif(0,1)
+  ),
+  data = dcc
+)
+
+precis(m5.7)
+```
+
+
+```{r}
+xseq <- seq( from=min(dcc$log.mass)-2 , to=max(dcc$log.mass)+2 , length.out=30 )
+mu <- link( m5.7 , data=data.frame( log.mass=xseq , neocortex.perc= mean(dcc$neocortex.perc) ) )
+mu_mean <- apply(mu,2,mean)
+mu_PI <- apply(mu,2,PI)
+plot( NULL , xlim=range(dcc$log.mass) , ylim=range(dcc$kcal.per.g) )
+lines( xseq , mu_mean , lwd=2 )
+shade( mu_PI , xseq )
+```
+```{r}
+xseq <- seq( 1:100)
+mu <- link( m5.7 , data=data.frame( neocortex.perc=xseq , log.mass= mean(dcc$log.mass) ) )
+mu_mean <- apply(mu,2,mean)
+mu_PI <- apply(mu,2,PI)
+plot( NULL , xlim=range(dcc$neocortex.perc) , ylim=range(dcc$kcal.per.g) )
+lines( xseq , mu_mean , lwd=2 )
+shade( mu_PI , xseq )
+```
+## 5.3. When adding variables hurts
+
+Adressing multicollinearity
+```{r}
+library(rethinking)
+data(milk)
+d <- milk
+
+#start by modeling kcal.per.g on perc.fat & perc.lactose but in two bivariate regressions
+
+# kcal regressed on perc.fat
+
+m5.10 <- quap(
+  alist(
+    kcal.per.g~dnorm(mu, sigma),
+    mu <- a+bf*perc.fat,
+    a~dnorm(0.6, 10),
+    bf~dnorm(0,1),
+    sigma~dunif(0,10)
+  ),
+  data = d
+)
+
+# kcal regressed on perc.lactose
+
+m5.11 <- quap(
+  alist(
+    kcal.per.g~dnorm(mu, sigma),
+    mu <- a+bl*perc.lactose,
+    a~dnorm(0.6, 10),
+    bl~dnorm(0,1),
+    sigma~dunif(0,10)
+  ),
+  data = d
+)
+
+precis(m5.10, digits = 3)
+precis(m5.11, digits = 3)
+
+```
+When we run a regression with the variables, we'll see that the CI gets much more wide & the mean of both the vars is halved or less. this is because these two predictors are highly correlated.
+```{r}
+cor(d$perc.fat, d$perc.lactose)
+pairs(~kcal.per.g+perc.fat+perc.lactose,
+      data = d, col = rangi2)
+```
+
+### Sidenote: Comparing predictive models.
+A more principled way to compare the predictive value of the two variables (still consider only models that have one or the other, not both!) is to compare some measure of fit. A measure that works for any likelihood-based model is negative log-likelihood. You can extract the log-likelihood of each model to compare them. Smaller negative log-likelihood indicates a better fit.
+```{r}
+-logLik(model1)
+-logLik(model2)
+```

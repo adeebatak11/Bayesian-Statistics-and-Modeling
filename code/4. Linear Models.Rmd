@@ -1,0 +1,141 @@
+---
+title: "4. Linear Models"
+output: html_document
+---
+
+## 4.3. A Gaussian Model of Height
+
+4.3.1. Data
+```{r}
+library(rethinking)
+data(Howell1)
+d <- Howell1
+
+#Displays concise parameter estimate information
+precis( d$height )
+
+#restrict to age >18
+library(tidyverse)
+d2 <- d %>% filter(age >=18)
+```
+
+4.3.2. The model
+```{r}
+#distribution of outcomes
+dens(d2$height)
+
+#priors
+# mean, mu
+curve(dnorm(x, 178, 20), from = 100, to = 250)
+
+# std dev
+curve(dunif(x, 0, 50), from = -10, 60)
+
+# what do priors imply about the distribution of the individual heights?
+sample_mu <- rnorm(1e4, 178, 20)
+sample_sigma <- runif(1e4, 0, 50)
+prior_h <- rnorm(1e4, sample_mu, sample_sigma)
+
+#plot the prior dist of heights
+# this is the relative plausibility of heights before seeing the dataß
+dens(prior_h)
+```
+
+4.3.3. Grid appx of the posterior distribution
+this is only for understanding and is impractical and not recommended to use irl
+```{r}
+mu.list <- seq(from = 140, to = 160, length.out = 200)
+sigma.list <- seq(from = 4, to = 9, length.out = 200)
+
+post <- expand.grid(mu = mu.list, sigma = sigma.list)
+post$LL <- sapply( 1:nrow(post) , function(i) sum(
+    dnorm( d2$height , post$mu[i] , post$sigma[i] , log=TRUE ) ) )
+post$prod <- post$LL + dnorm( post$mu , 178 , 20 , TRUE ) +
+    dunif( post$sigma , 0 , 50 , TRUE )
+post$prob <- exp( post$prod - max(post$prod) )
+
+contour_xyz( post$mu , post$sigma , post$prob )
+
+image_xyz( post$mu , post$sigma , post$prob )
+```
+
+4.3.4. Sampling from the posterior
+Now that we have more than one parameter, we first randomly sample row numbers in post in proportion to the posterior probabilities
+```{r}
+sample.rows <- sample(1:nrow(post), size = 1e4, replace = TRUE, prob = post$prob)
+sample.mu <- post$mu[sample.rows]
+sample.sigma <- post$sigma[sample.rows]
+
+#look at the samples
+plot( sample.mu , sample.sigma , cex=0.5 , pch=16 , col=col.alpha(rangi2,0.1) )
+
+dens(sample.mu)
+dens(sample.sigma)
+
+HPDI(sample.mu)
+HPDI(sample.sigma)
+```
+
+## 4.3.5. Quadratic Appx
+```{r}
+library(rethinking)
+data("Howell1")
+d <- Howell1
+d2 <- d %>% filter(age >=18)
+flist <- alist(
+  height ~ dnorm(mu, sigma),
+  mu ~ dnorm(178, 20),
+  sigma ~ dunif(0, 50)
+)
+
+m4.1 <- quap(flist, data = d2)
+
+#precis gives a compact summary of the model (or distribution)
+precis(m4.1)
+```
+
+Here it give the maximum a posteriori (MAP) model. These numbers provide Gaussian appx for each parameter's marginal distribution (averaging over other parameters). This means the plausibility of each value of mu, after averaging over the plausibilities of each value of sigma, is given by the Gaussian dist N(154.61, 7.73).
+
+Now, let's provide more informative priors.
+```{r}
+m4.2 <- quap(
+  alist(
+    height~dnorm(mu, sigma),
+    mu~dnorm(178, 0.1),
+    sigma~dunif(0, 50)
+  ),
+  data = d2
+)
+precis(m4.2)
+```
+
+Here we see that the estimate has hardly moved off the prior, given we said that the prior is very concentrated around 178 (low sd). Also, the estimate for sigma has increased a lot, even though we didn't even change its prior. Think about these as marginal distribution and parameter estimates hence impact one another.
+
+### Variance-Covariance Matrix: 
+Matrix of variances and covariances. This is decomposed into:
+1. a vector of variances of the parameters
+2. a correlation matrix that tells us how changes in any parameter lead to correlated change in the others.
+
+Note: Correlation is covariance that’s been standardized so it’s unitless and bounded.
+```{r}
+#Variance-Covariance Matrix
+vcov(m4.1)
+
+#variances
+diag(vcov(m4.1))
+
+#correlation matrix
+cov2cor(vcov(m4.1))
+```
+
+### Sample from a quap fit
+```{r}
+library(rethinking)
+post <- extract.samples(m4.1, n = 1e4)
+precis(post)
+
+##what's going on under the hood when getting samples from a multi-dimensional gaussian dist
+library(MASS)
+post2 <- mvrnorm( n=1e4 , mu=coef(m4.1) , Sigma=vcov(m4.1) )
+```
+
