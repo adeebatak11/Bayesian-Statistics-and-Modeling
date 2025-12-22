@@ -77,4 +77,57 @@ plot(milk.models, SE = TRUE, dSE = TRUE)
 In the plot above, the filled points are in-sample deviance, the open points are WAIC. The std error of each WAIC is the dark line segment. The dWAIC & dSE are the triangles and the grey line.
 
 ### Comparing estimates
-In addition to comparing models on the basis of expected test deviance, it is useful compare them on the basis of parameter estimates. 
+In addition to comparing models on the basis of expected test deviance, it is useful to compare them on the basis of parameter estimates.
+```{r}
+library(rethinking)
+coeftab(m1, m2, m3 , m4)
+```
+nobs are number of ovbservations used to fit each model.
+```{r}
+plot(coeftab(m1, m2, m3 , m4))
+```
+Each point in the plot is a MAP estimate and each line segment is a 89% HPDI. The vertical dashed line is at 0.
+
+
+The question this adresses is:
+How do parameter estimates change as predictors are added and subtracted from the model? Does it parameter's posterior distribution remain stable when other predictors are added or removed?
+
+## Model Averaging
+As a review, let's simulate & plot counterfactual predictions (posterior predictive distribution) for the minimum-WAIC model (m4).
+```{r}
+#counterfactual prediction computation
+#neo cortex seq
+ncseq <- seq(from = 0.5, to = 0.8, length.out = 30)
+d.predict <- list(kcal.per.g = rep(0, 30), #empty outcome
+                  neocortex = ncseq,
+                  mass = rep(4.5, 30)
+                  )
+
+pred.m4 <- link(m4, data = d.predict)
+mu = apply(pred.m4, 2, mean)
+mu.PI = apply(pred.m4, 2, PI)
+
+plot(kcal.per.g ~ neocortex, data = d,
+     col = rangi2, pch = 16)
+lines(ncseq, mu, lty = 2)
+lines(ncseq, mu.PI[1,], lty = 2)
+lines(ncseq, mu.PI[2,], lty = 2)
+```
+Now, let's compute and add model averaged posterior predictions: computing an ENSEMBLE of the posterior predictions from each model, weighted by the model's WAIC weight.
+
+1. compute WAIC for each model.
+2. compute weight for each model.
+3. compute linear model & simulated outcomes for each model.
+4. combine these values into an *ensemble of predictions*, using the model weights as proportions.
+
+```{r}
+milk.ensemble <- ensemble(m1, m2, m3, m4, data = d.predict)
+mu <-  apply(milk.ensemble$link, 2, mean)
+mu.PI <- apply(milk.ensemble$link, 2, PI)
+plot(kcal.per.g ~ neocortex, data = d,
+     col = rangi2, pch = 16)
+lines(ncseq, mu)
+shade(mu.PI, ncseq)
+```
+
+
