@@ -1,0 +1,255 @@
+---
+title: "Quadratic Approximation"
+author: "Adeeba Tak"
+data: Sys.Date()
+output: pdf_document
+header-includes:
+  - \usepackage{fvextra}
+  - \fvset{breaklines=true}
+---
+
+```{r}
+library(rethinking)
+```
+
+```{r}
+globe.qa <- quap(
+    alist(
+        W ~ dbinom( W+L, p) ,  # binomial likelihood
+        p ~ dunif(0, 1)     # uniform prior
+    ) ,
+    data=list(W=6,L=3) )
+
+precis(globe.qa, hist = FALSE) 
+```
+
+# Modeling an outcome, height as a Gaussian dist
+
+## 4.3.5. Quadratic Appx
+```{r}
+library(rethinking)
+library(tidyverse)
+data("Howell1")
+d <- Howell1
+d2 <- d %>% filter(age >=18)
+flist <- alist(
+  height ~ dnorm(mu, sigma),
+  mu ~ dnorm(178, 20),
+  sigma ~ dunif(0, 50)
+)
+
+m4.1 <- quap(flist, data = d2)
+
+#precis gives a compact summary of the model (or distribution)
+precis(m4.1)
+```
+
+Here it give the maximum a posteriori (MAP) model. These numbers provide Gaussian appx for each parameter's marginal distribution (averaging over other parameters). This means the plausibility of each value of mu, after averaging over the plausibilities of each value of sigma, is given by the Gaussian dist N(154.61, 7.73).
+
+Now, let's provide more informative priors.
+```{r}
+m4.2 <- quap(
+  alist(
+    height~dnorm(mu, sigma),
+    mu~dnorm(178, 0.1),
+    sigma~dunif(0, 50)
+  ),
+  data = d2
+)
+precis(m4.2)
+```
+
+Here we see that the estimate has hardly moved off the prior, given we said that the prior is very concentrated around 178 (low sd). Also, the estimate for sigma has increased a lot, even though we didn't even change its prior. Think about these as marginal distribution and parameter estimates hence impact one another.
+
+### Variance-Covariance Matrix 
+Matrix of variances and covariances. This is decomposed into:
+1. a vector of variances of the parameters
+2. a correlation matrix that tells us how changes in any parameter lead to correlated change in the others.
+
+Note: Correlation is covariance that’s been standardized so it’s unitless and bounded.
+```{r}
+#Variance-Covariance Matrix
+vcov(m4.1)
+
+#variances
+diag(vcov(m4.1))
+
+#correlation matrix
+cov2cor(vcov(m4.1))
+```
+
+### Sample from a quap fit
+```{r}
+library(rethinking)
+post <- extract.samples(m4.1, n = 1e4)
+precis(post, hist = FALSE)
+
+##what's going on under the hood when getting samples from a multi-dimensional gaussian dist
+library(MASS)
+post2 <- mvrnorm( n=1e4 , mu=coef(m4.1) , Sigma=vcov(m4.1) )
+```
+### Adding a predictor
+We will add weight as a predictor.
+```{r}
+plot(d2$height~d2$weight)
+f <- alist(
+  height~dnorm(mu, sigma),
+  mu <-  alpha+weight*beta,
+  alpha~dnorm(156,100),
+  beta~dnorm(0,10),
+  sigma~dunif(0,50)
+)
+
+model <- quap(f, data = d2)
+precis(model)
+cov2cor(vcov(model))
+```
+Centering as a tool to avoid strong correlation in parameters & easier interpretation of the intercept.
+```{r}
+mean_weight <- mean(d2$weight)
+f <- alist(
+  height~dnorm(mu, sigma),
+  mu <-  alpha+(weight-mean_weight)*beta,
+  alpha~dnorm(178,100),
+  beta~dnorm(0,10),
+  sigma~dunif(0,50)
+)
+model_c <- quap(f, data = d2)
+```
+now the intercept means: the expected value of the outcome when the predictor is at its average value (rather than when it is 0, which is not meaningful).
+
+### Plotting posterior inference against the data
+```{r}
+library(ggplot2)
+ggplot(data = d2, aes(y = height, x = weight))+
+  geom_point()+
+  geom_abline(intercept = coef(model)[["alpha"]], slope = coef(model)[["beta"]], color = "red")+
+  theme_minimal()
+```
+### Adding uncertainty around the mean
+Showcasing uncertainty around the MAP line
+```{r}
+post <- extract.samples(model) # by default, n = 10000
+post[1:5,]
+
+# plot 20 lines sampled from posterior distribution
+ggplot(data = d2, aes(x = weight, y = height))+
+  geom_point()+
+  geom_abline(data = post[1:20,],
+              aes(intercept = alpha, slope = beta), alpha = 0.1, color = "red")
+```
+### Plotting regression intervals and contours
+1. Use "link()" to generate posterior distributions for mu. The default behavior uses the available data but we give can give it a new list of x-axis values (weight here) that we want to plot posterior predictions across.
+We use the link function: this gives us the posterior distribution of mu for each case of alpha and beta. This samples from the posterior distribution from the quap output and then evaluates outcome at each observation point.
+number of rows is the number of samples from the posterior distribution from quap and number of columns is the number of data points/observations, i.
+
+2. Use summary functions such as mean/HPDI/PI to find averages, lower/upper bounds of parameter (mu) for each value of the predictor variables (weight).
+
+3. use plotting functions such as lines and shades to draw lines and intervals. or whatever is needed.
+```{r}
+# simple, plain (also not as useful)
+mu <- link(model)
+
+# define sequence of data you want predictions for
+weight_seq <- seq(25, 70, by = 1)
+mu_pred <- link(model, data = data.frame(weight = weight_seq))
+plot( height ~ weight , d2 , type="n" )
+for ( i in 1:100 )
+    points( weight_seq , mu_pred[i,] , pch=16 , col=col.alpha(rangi2,0.1) )
+```
+Summarizing distribution for each weight value.
+- mu_mean is the average mu (think average of mean of height) at each weight value
+- mu_HDPI contains 89% lower & upper bounds for each weight value.
+```{r}
+mu_mean <- colMeans(mu_pred)
+mu_HPDI <- apply(mu_pred , 2 , HPDI , prob=0.89 )
+```
+
+We can plot these summaries on top of the data.
+```{r}
+# plot raw data
+# fading out points to make line and interval more visible
+plot( height ~ weight , data=d2 , col=col.alpha(rangi2,0.5) )
+
+# plot the MAP line, aka the mean mu for each weight
+lines( weight_seq , mu_mean )
+
+# plot a shaded region for 89% HDPI
+shade( mu_HPDI , weight_seq )
+```
+### Prediction Intervals
+```{r}
+sim_height <- sim(model, data=list(weight=weight_seq))
+
+height_PI <- apply(sim_height , 2 , PI , prob=0.89 )
+
+# plot raw data
+plot( height ~ weight , d2 , col=col.alpha(rangi2,0.5) )
+# draw MAP line
+lines( weight_seq , mu_mean )
+
+# draw HPDI region for line
+shade( mu_HPDI , weight_seq )
+
+# draw PI region for simulated heights
+shade( height_PI , weight_seq )
+
+```
+
+NOTE: Two kinds of uncertainty. In the procedure above, we encountered both uncertainty in parameter values and uncertainty in a sampling process. These are distinct concepts, even though they are processed much the same way and end up blended together in the posterior predictive simulation. The posterior distribution is a ranking of the relative plausibilities of every possible combination of parameter values. The distribution of simulated outcomes, like height, is instead a distribution that includes sampling variation from some process that generates Gaussian random variables. This sampling variation is still a model assumption. It’s no more or less objective than the posterior distribution. Both kinds of uncertainty matter, at least sometimes. But it’s important to keep them straight,because they depend upon different model assumptions. Furthermore, it’s possible to view the Gaussian likelihood as a purely epistemological assumption (a device for estimating the mean and variance of a variable), rather than an ontological assumption about what future data will look like. In that case, it may not make complete sense to simulate outcomes.
+
+Good practice:
+## 4H2
+
+```{r}
+library(tidyverse)
+library(rethinking)
+data(Howell1)
+d <- Howell1
+# a
+d <- d %>% filter(age<18)
+f <- alist(height~dnorm(mu, sigma),
+           mu <-  a+b*weight,
+           a~dnorm(100, 100),
+           b~dnorm(0,10),
+           sigma~dunif(0, 50))
+model <- quap(
+  f, data = d)
+precis(model)
+# for a change of 10kg of weight, we predict an average of 27.2cm of increase in height.
+
+# b
+# mu/MAP regression line & related HPDI
+post <- link(model)
+post_mean <- colMeans(post)
+post_HDPI <- apply(post, 2, HPDI, 0.89)
+
+# for predicted heights and the relevant HDPI
+pred <- sim(model)
+pred_HDPI <- apply(pred, 2, HPDI, 0.89)
+# Combine into one data frame
+plot_df <- data.frame(
+  weight = d$weight,
+  height = d$height,
+  mu     = post_mean,
+  lower_mean  = post_HDPI[1, ],
+  upper_mean  = post_HDPI[2, ],
+  lower_pred = pred_HDPI[1, ],
+  upper_pred = pred_HDPI[2, ]
+)
+
+library(ggplot2)
+ggplot(plot_df, aes(x = weight, y = height)) +
+  geom_point() +   # shaded HDPI
+  geom_line(aes(y = mu), color = "blue", linewidth = 1) +
+  geom_ribbon(aes(ymin = lower_mean, ymax = upper_mean),
+              alpha = 0.2, fill = "red") +     
+  geom_abline(slope = coef(model)[["b"]],
+              intercept = coef(model)[["a"]],
+              color = "red") +
+    geom_ribbon(aes(ymin = lower_pred, ymax = upper_pred),
+              alpha = 0.2, fill = "blue") +  
+  theme_minimal()
+
+#please note here how the MAP line and the mean of the posterior sampling are the same line.
+```

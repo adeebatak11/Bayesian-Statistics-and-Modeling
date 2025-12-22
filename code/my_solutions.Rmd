@@ -1,0 +1,526 @@
+---
+title: "my_solutions"
+output: pdf_document
+---
+
+# Chapter 2
+
+## 2M1
+
+```{r}
+p_grid <- seq(0, 1, length.out = 100)
+prior <- rep(1,100)
+
+#1
+d1 <- list(W = 3)
+likelihood <- dbinom(3, 3, prob = p_grid)
+posterior <- likelihood * prior
+posterior <- posterior/sum(posterior)
+
+library(ggplot2)
+ggplot(NULL, aes(x = p_grid, y = posterior))+
+  geom_point()+
+  geom_line()
+
+#2
+d2 <- list(W = 3, L = 1)
+likelihood <- dbinom(3, 4, prob = p_grid)
+posterior <- likelihood * prior
+posterior <- posterior/sum(posterior)
+
+ggplot(NULL, aes(x = p_grid, y = posterior))+
+  geom_point()+
+  geom_line()
+
+#3
+d3 <- list(W = 5, L = 2)
+likelihood <- dbinom(5, 7, prob = p_grid)
+posterior <- likelihood * prior
+posterior <- posterior/sum(posterior)
+
+ggplot(NULL, aes(x = p_grid, y = posterior))+
+  geom_point()+
+  geom_line()
+
+```
+
+## 2M2
+
+```{r}
+p_grid <- seq(0, 1, length.out = 100)
+prior <- ifelse(p_grid < 0.5, 0, 1)
+
+#1
+d1 <- list(W = 3)
+likelihood <- dbinom(3, 3, prob = p_grid)
+posterior <- likelihood * prior
+posterior <- posterior/sum(posterior)
+
+library(ggplot2)
+ggplot(NULL, aes(x = p_grid, y = posterior))+
+  geom_point()+
+  geom_line()
+
+#2
+d2 <- list(W = 3, L = 1)
+likelihood <- dbinom(3, 4, prob = p_grid)
+posterior <- likelihood * prior
+posterior <- posterior/sum(posterior)
+
+ggplot(NULL, aes(x = p_grid, y = posterior))+
+  geom_point()+
+  geom_line()
+
+#3
+d3 <- list(W = 5, L = 2)
+likelihood <- dbinom(5, 7, prob = p_grid)
+posterior <- likelihood * prior
+posterior <- posterior/sum(posterior)
+
+ggplot(NULL, aes(x = p_grid, y = posterior))+
+  geom_point()+
+  geom_line()
+```
+
+# Chapter 3
+
+```{r}
+p_grid <- seq( from=0 , to=1 , length.out=1000 )
+prior <- rep( 1 , 1000 )
+likelihood <- dbinom( 6 , size=9 , prob=p_grid )
+posterior <- likelihood * prior
+posterior <- posterior / sum(posterior)
+set.seed(100)
+samples <- sample( p_grid , prob=posterior , size=1e4 , replace=TRUE )
+```
+
+## 3E1
+
+```{r}
+sum(samples < 0.2)/length(samples)
+```
+
+## 3E2
+
+```{r}
+sum(samples > 0.8)/length(samples)
+```
+
+## 3E3
+
+```{r}
+sum(samples > 0.2 & samples < 0.8)/length(samples)
+```
+
+## 3E4
+
+```{r}
+quantile(samples, 0.2)
+```
+
+## 3E5
+
+```{r}
+quantile(samples, 0.8)
+```
+
+## 3E6
+
+```{r}
+HPDI(samples, 0.66)
+```
+
+## 3E7
+
+```{r}
+PI(samples, 0.66)
+```
+
+## 3M1
+
+```{r}
+p_grid <- seq(0, 1, length.out = 1000)
+prior <- rep(1, 1000)
+likelihood <- dbinom(8, 15, prob = p_grid)
+posterior <- likelihood*prior
+posterior <- posterior/sum(posterior)
+plot(posterior~p_grid, type="l")
+```
+
+## 3M2
+
+```{r}
+samples <- sample(p_grid, prob = posterior, size = 1e4, replace = TRUE)
+library(rethinking)
+HPDI(samples, 0.9)
+```
+
+## 3M3
+
+```{r}
+ppd <- rbinom(1e4, 15, prob = samples)
+simplehist(ppd)
+sum(ppd == 8)/1e4
+```
+
+## 3M3
+
+```{r}
+ppd <- rbinom(1e4, 9, prob = samples)
+simplehist(ppd)
+sum(ppd == 6)/1e4
+```
+
+## 3M5
+
+```{r}
+p_grid <- seq(0,1,length.out = 1e4)
+prior <- ifelse(p_grid<0.5, 0, 1)
+likelihood <- dbinom(8,15,p_grid)
+posterior <- likelihood*prior
+posterior <- posterior/sum(posterior)
+
+samples <- sample(p_grid, prob = posterior, size = 1e4, replace = TRUE)
+HPDI(samples, 0.9)
+```
+
+## 3H1
+
+```{r}
+library(rethinking)
+data(homeworkch3)
+
+p_grid <- seq(0,1,length.out = 1000)
+prior <- rep(1, 1000)
+likelihood <- dbinom(sum(birth1) + sum(birth2), 200, p_grid)
+posterior <- likelihood*prior
+posterior <- posterior/sum(posterior)
+plot( posterior ~ p_grid , type="l" )
+
+p_grid[which.max(posterior)]
+```
+
+## 3H2
+
+```{r}
+samples <- sample(p_grid, 1e4, prob = posterior, replace = TRUE)
+HPDI(samples, c(0.5, 0.89, 0.97))
+```
+
+## 3H3
+
+```{r}
+samples <- sample(p_grid, 1e4, prob = posterior, replace = TRUE)
+sim <- rbinom(1e4, 200, prob = samples)
+dens(sim)
+```
+
+## 3H4
+
+```{r}
+sim2 <- rbinom(1e4, 100, prob = samples)
+dens(sim2)
+sum(birth1)
+```
+
+## 3H4
+
+```{r}
+boy2 <- birth2[birth1==0]
+sim2 <- rbinom(1e4, sum(boy2), prob = samples)
+dens(sim2)
+sum(boy2)
+```
+
+## 4M1
+
+```{r}
+library(rethinking)
+mu <- rnorm(1e4, 0, 10)
+sigma <- runif(1e4, 0, 10)
+height <- rnorm(1e4, mu, sigma)
+dens(height)
+```
+
+## 4M2
+
+```{r}
+library(rethinking)
+f <- alist(
+    height~dnorm(mu, sigma),
+    mu~dnorm(0, 10),
+    sigma~dunif(0,10)
+  )
+```
+
+## 4H1
+
+```{r}
+library(rethinking)
+data(Howell1)
+d <- Howell1
+f <- alist(height~dnorm(mu, sigma),
+           mu <-  a+b*weight,
+           a~dnorm(178, 100),
+           b~dnorm(0,10),
+           sigma~dunif(0, 50))
+model <- quap(f, data = d)
+
+precis(model)
+
+weight <- c(46.95, 43.72, 64.78, 32.59, 54.63)
+
+pred <- sim(model, data = data.frame(weight))
+pred_height <- colMeans(pred)
+print(pred_height)
+apply(pred, 2, PI, 0.89)
+list(weight = weight, height = pred_height)
+```
+
+## 4H2
+
+```{r}
+library(tidyverse)
+library(rethinking)
+data(Howell1)
+d <- Howell1
+# a
+d <- d %>% filter(age<18)
+f <- alist(height~dnorm(mu, sigma),
+           mu <-  a+b*weight,
+           a~dnorm(100, 100),
+           b~dnorm(0,10),
+           sigma~dunif(0, 50))
+model <- quap(
+  f, data = d)
+precis(model)
+# for a change of 10kg of weight, we predict an average of 27.2cm of increase in height.
+
+# b
+# mu/MAP regression line & related HPDI
+post <- link(model)
+post_mean <- colMeans(post)
+post_HDPI <- apply(post, 2, HPDI, 0.89)
+
+# for predicted heights and the relevant HDPI
+pred <- sim(model)
+pred_HDPI <- apply(pred, 2, HPDI, 0.89)
+# Combine into one data frame
+plot_df <- data.frame(
+  weight = d$weight,
+  height = d$height,
+  mu     = post_mean,
+  lower_mean  = post_HDPI[1, ],
+  upper_mean  = post_HDPI[2, ],
+  lower_pred = pred_HDPI[1, ],
+  upper_pred = pred_HDPI[2, ]
+)
+
+library(ggplot2)
+ggplot(plot_df, aes(x = weight, y = height)) +
+  geom_point() +   # shaded HDPI
+  geom_line(aes(y = mu), color = "blue", linewidth = 1) +
+  geom_ribbon(aes(ymin = lower_mean, ymax = upper_mean),
+              alpha = 0.2, fill = "red") +     
+  geom_abline(slope = coef(model)[["b"]],
+              intercept = coef(model)[["a"]],
+              color = "red") +
+    geom_ribbon(aes(ymin = lower_pred, ymax = upper_pred),
+              alpha = 0.2, fill = "blue") +  
+  theme_minimal()
+
+#please note here how the MAP line and the mean of the posterior sampling are the same line.
+```
+## 4H3
+```{r}
+library(tidyverse)
+library(rethinking)
+data(Howell1)
+d <- Howell1
+f <- alist(height~dnorm(mu, sigma),
+           mu <-  a+b*log(weight),
+           a~dnorm(178, 100),
+           b~dnorm(0,100),
+           sigma~dunif(0, 50))
+model <- quap(
+  f, data = d)
+
+pred_mean <- link(model)
+mean_pred_mean <- colMeans(pred_mean)
+pred_mean_HDPI <- apply(pred_mean, 2, HPDI, 0.97)
+
+pred_height <- sim(model)
+pred_height_HDPI <- apply(pred_height, 2, HPDI, 0.97)
+
+df_plot <- tibble(
+  weight = d$weight,
+  height = d$height,
+  mean = mean_pred_mean,
+  mean_lower = pred_mean_HDPI[1, ],
+  mean_upper = pred_mean_HDPI[2, ],
+  pred_lower = pred_height_HDPI[1, ],
+  pred_upper = pred_height_HDPI[2, ]
+)
+
+ggplot(df_plot, aes(x = weight, y = height))+
+  geom_point()+
+  geom_line(aes(y = mean), color = "red")+
+  geom_ribbon(aes(ymin = mean_lower, ymax = mean_upper), alpha = 0.5, fill = "yellow")+
+  geom_ribbon(aes(ymin = pred_lower, ymax = pred_upper), alpha = 0.2, fill = "blue")+
+  theme_minimal()
+```
+## 5H1
+```{r}
+library(rethinking)
+library(tidyverse)
+data(foxes)
+d <- foxes
+precis(d)
+str(d)
+d$A <- standardize(d$area)
+d$GS <- standardize(d$groupsize)
+d$weight <- standardize(d$weight)
+
+glimmer(weight~A, data = d)
+
+model1 <- quap(
+  alist(
+    weight ~ dnorm( mu , sigma ),
+   mu <- Intercept +
+        b_A*A,
+    Intercept ~ dnorm(0,10),
+    b_A ~ dnorm(0,10),
+    sigma ~ dunif(0,2)
+),
+data = d
+)
+
+
+mu1 <- link( model1, d )
+mu.mean1 <- apply( mu1 , 2 , mean )
+mu.ci1 <- apply( mu1 , 2 , PI, 0.95 )
+
+df_plot1 <- tibble(
+  area = d$area,
+  weight = d$weight,
+  mean = mu.mean1,
+  mean_lower = mu.ci1[1, ],
+  mean_upper = mu.ci1[2, ]
+)
+
+ggplot(df_plot1, aes(x = area, y = weight))+
+  geom_point()+
+  geom_line(aes(y = mean), color = "red")+
+  geom_ribbon(aes(ymin = mean_lower, ymax = mean_upper), alpha = 0.5, fill = "yellow")+
+  theme_minimal()
+
+glimmer(weight~GS, data = d)
+
+model2 <- quap(
+  alist(
+   weight ~ dnorm( mu , sigma ),
+    mu <- Intercept +
+        b_GS*GS,
+    Intercept ~ dnorm(0,10),
+    b_GS ~ dnorm(0,10),
+    sigma ~ dunif(0,2)
+),
+data = d
+)
+
+mu2 <- link( model2, d )
+mu.mean2 <- apply( mu2 , 2 , mean )
+mu.ci2 <- apply( mu2 , 2 , PI, 0.95 )
+
+df_plot2 <- tibble(
+  groupsize = d$groupsize,
+  weight = d$weight,
+  mean = mu.mean2,
+  mean_lower = mu.ci2[1, ],
+  mean_upper = mu.ci2[2, ]
+)
+
+ggplot(df_plot2, aes(x = groupsize , y = weight))+
+  geom_point()+
+  geom_line(aes(y = mean), color = "red")+
+  geom_ribbon(aes(ymin = mean_lower, ymax = mean_upper), alpha = 0.5, fill = "yellow")+
+  theme_minimal()
+```
+
+## 5H2
+```{r}
+library(rethinking)
+library(tidyverse)
+data(foxes)
+d <- foxes
+precis(d)
+str(d)
+d$A <- standardize(d$area)
+d$GS <- standardize(d$groupsize)
+d$W <- standardize(d$weight)
+
+glimmer(W~A+GS, data = d)
+
+model1 <- quap(
+  alist(
+    weight ~ dnorm( mu , sigma ),
+    mu <- Intercept +
+        b_A*area +
+        b_GS*groupsize,
+    Intercept ~ dnorm(0,10),
+    b_A ~ dnorm(0,10),
+    b_GS ~ dnorm(0,10),
+    sigma ~ dunif(0,2)
+),
+data = d
+)
+
+data_pred1 <- data.frame(area = d$area, groupsize = mean(d$groupsize))
+post1 <- link(model1, data = data_pred1)
+
+mu1 <- apply(post1, 2, mean)
+mu1_PI <- apply(post1, 2, PI, .95)
+
+df_plot1 <- tibble(
+  area = d$area,
+  weight = d$weight,
+  mean = mu1,
+  mean_lower = mu1_PI[1, ],
+  mean_upper = mu1_PI[2, ]
+)
+
+ggplot(df_plot1, aes(x = area, y = weight))+
+  geom_line(aes(y = mean), color = "darkblue")+
+  geom_ribbon(aes(ymin = mean_lower, ymax = mean_upper), alpha = 0.5, fill = "lightblue")+
+  theme_minimal()
+
+data_pred2 <- data.frame(area = mean(d$area), groupsize = d$groupsize)
+post2 <- link(model1, data = data_pred2)
+
+mu2 <- apply(post2, 2, mean)
+mu2_PI <- apply(post2, 2, PI, .95)
+
+df_plot2 <- tibble(
+  groupsize = d$groupsize,
+  weight = d$weight,
+  mean = mu2,
+  mean_lower = mu2_PI[1, ],
+  mean_upper = mu2_PI[2, ]
+)
+
+ggplot(df_plot2, aes(x = groupsize, y = weight))+
+  geom_line(aes(y = mean), color = "darkblue")+
+  geom_ribbon(aes(ymin = mean_lower, ymax = mean_upper), alpha = 0.5, fill = "lightblue")+
+  theme_minimal()
+```
+## 6E2
+```{r}
+-1*(0.7*log(0.7) + 0.3*log(0.3))
+```
+
+## 6E3
+```{r}
+-1*(0.2*log(0.2) + 0.25*log(0.25)+0.3*log(0.3) + 0.25*log(0.25))
+
+-1*(0.33*log(0.33) + 0.33*log(0.33) + 0.33*log(0.33))
+```
