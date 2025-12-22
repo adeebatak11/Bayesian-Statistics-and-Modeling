@@ -524,3 +524,222 @@ ggplot(df_plot2, aes(x = groupsize, y = weight))+
 
 -1*(0.33*log(0.33) + 0.33*log(0.33) + 0.33*log(0.33))
 ```
+
+## 6H
+```{r}
+library(rethinking)
+data(Howell1)
+d <- Howell1
+d$age <- standardize(d$age)
+set.seed(123)
+i <- sample(1:nrow(d), size = nrow(d)/2)
+d1 <- d[i, ]
+d2 <- d[-i, ]
+
+m1 <- quap(
+  alist(
+    height~dnorm(mu, sigma),
+    mu <- a+b1*age,
+    a~dnorm(0, 100),
+    b1~dnorm(0, 100),
+    sigma~dunif(0, 50)
+  ),
+  data = d1
+)
+
+m2 <- quap(
+  alist(
+    height~dnorm(mu, sigma),
+    mu <- a+b1*age+b2*age^2,
+    a~dnorm(0, 100),
+    b1~dnorm(0, 100),
+    b2~dnorm(0, 100),
+    sigma~dunif(0, 50)
+  ),
+  data = d1
+)
+
+m3 <- quap(
+  alist(
+    height~dnorm(mu, sigma),
+    mu <- a+b1*age+b2*age^2+b3*age^3,
+    a~dnorm(0, 100),
+    b1~dnorm(0, 100),
+    b2~dnorm(0, 100),
+    b3~dnorm(0, 100),
+    sigma~dunif(0, 50)
+  ),
+  data = d1
+)
+
+m4 <- quap(
+  alist(
+    height~dnorm(mu, sigma),
+    mu <- a+b1*age+b2*age^2+b3*age^3+b4*age^4,
+    a~dnorm(0, 100),
+    b1~dnorm(0, 100),
+    b2~dnorm(0, 100),
+    b3~dnorm(0, 100),
+    b4~dnorm(0, 100),
+    sigma~dunif(0, 50)
+  ),
+  data = d1
+)
+
+m5 <- quap(
+  alist(
+    height~dnorm(mu, sigma),
+    mu <- a+b1*age+b2*age^2+b3*age^3+b4*age^4+b5*age^5,
+    a~dnorm(0, 100),
+    b1~dnorm(0, 100),
+    b2~dnorm(0, 100),
+    b3~dnorm(0, 100),
+    b4~dnorm(0, 100),
+    b5~dnorm(0, 100),
+    sigma~dunif(0, 50)
+  ),
+  data = d1
+)
+
+m6 <- quap(
+  alist(
+    height~dnorm(mu, sigma),
+    mu <- a+b1*age+b2*age^2+b3*age^3+b4*age^4+b5*age^5+b6*age^6,
+    a~dnorm(0, 100),
+    b1~dnorm(0, 100),
+    b2~dnorm(0, 100),
+    b3~dnorm(0, 100),
+    b4~dnorm(0, 100),
+    b5~dnorm(0, 100),
+    b6~dnorm(0, 100),
+    sigma~dunif(0, 50)
+  ),
+  data = d1
+)
+```
+
+## 6H1
+```{r}
+howell.models <- compare(m1, m2, m3, m4, m5, m6)
+howell.models
+```
+
+## 6H2
+```{r}
+age.seq <- seq(from = -2, to = 3, length.out = 30)
+mu <- link(m4, data = list(age = age.seq))
+mu.mean <- apply( mu , 2 , mean )
+mu.PI <- apply( mu , 2 , PI, 0.97)
+
+height_sim <- sim(m4, data = list(age = age.seq))
+height.ci <- apply( height_sim , 2 , PI )
+
+plot( height ~ age , d1 , col="slateblue" , xlim=c(-2,3) )
+lines( age.seq , mu.mean )
+shade( mu.PI , age.seq )
+shade( height.ci , age.seq )
+```
+
+## 6H3
+```{r}
+h.ensemble <- ensemble(m4, m5, m6, data = list(age = age.seq))
+mu.mean <- apply( h.ensemble$link , 2 , mean )
+mu.ci <- apply( h.ensemble$link , 2 , PI )
+height.ci <- apply( h.ensemble$sim , 2 , PI )
+
+plot( height ~ age , d1 , col="slateblue" , xlim=c(-2,3) )
+lines( age.seq , mu.mean )
+shade( mu.ci , age.seq )
+shade( height.ci , age.seq )
+```
+
+## 6H4
+```{r}
+k <- coef(m1)
+mu <- k['a'] + k['b1']*d2$age
+dev.m1 <- (-2)*sum( dnorm( d2$height , mu , k['sigma'] , log=TRUE ) )
+k <- coef(m2)
+mu <- k['a'] + k['b1']*d2$age + k['b2']*d2$age^2
+dev.m2 <- (-2)*sum( dnorm( d2$height , mu , k['sigma'] , log=TRUE ) )
+k <- coef(m3)
+mu <- k['a'] + k['b1']*d2$age + k['b2']*d2$age^2 + k['b3']*d2$age^3
+dev.m3 <- (-2)*sum( dnorm( d2$height , mu , k['sigma'] , log=TRUE ) )
+k <- coef(m4)
+mu <- k['a'] + k['b1']*d2$age + k['b2']*d2$age^2 + k['b3']*d2$age^3 +
+k['b4']*d2$age^4
+dev.m4 <- (-2)*sum( dnorm( d2$height , mu , k['sigma'] , log=TRUE ) )
+k <- coef(m5)
+mu <- k['a'] + k['b1']*d2$age + k['b2']*d2$age^2 + k['b3']*d2$age^3 +
+k['b4']*d2$age^4 + k['b5']*d2$age^5
+dev.m5 <- (-2)*sum( dnorm( d2$height , mu , k['sigma'] , log=TRUE ) )
+k <- coef(m6)
+mu <- k['a'] + k['b1']*d2$age + k['b2']*d2$age^2 + k['b3']*d2$age^3 +
+k['b4']*d2$age^4 + k['b5']*d2$age^5 + k['b6']*d2$age^6
+dev.m6 <- (-2)*sum( dnorm( d2$height , mu , k['sigma'] , log=TRUE ) )
+```
+
+## 6H5
+```{r}
+compare.tab <- compare(m1,m2,m3,m4,m5,m6,sort=FALSE)
+tab <- data.frame(
+WAIC=compare.tab@ .Data[[1]],
+dev_out=c(dev.m1,dev.m2,dev.m3,dev.m4,dev.m5,dev.m6)
+)
+rownames(tab) <- rownames(compare.tab@row.names)
+# display, sorted by dev out
+tab[ order(tab$dev_out) , ]
+```
+
+For relative differences:
+```{r}
+dWAIC <- tab$WAIC - min(tab$WAIC)
+ddev_out <- tab$dev_out - min(tab$dev_out)
+plot( 1:6 , dWAIC , type="l" , xlab="model" , ylab="deviance" )
+lines( 1:6 , ddev_out , col="red" )
+plot( 4:6 , dWAIC[4:6] , type="l" , xlab="model" ,
+ylab="deviance" , ylim=c(0,2.2) )
+lines( 4:6 , ddev_out[4:6] , col="red" )
+```
+## 6H6
+```{r}
+f <- alist(
+height ~ dnorm( mu , sigma ),
+mu <- a + b1*age + b2*age^2 + b3*age^3 + b4*age^4 +
+b5*age^5 + b6*age^6,
+c(b1,b2,b3,b4,b5,b6) ~ dnorm( 0 , 5 )
+)
+m <- map( f , data=d1 ,
+start=list(
+a=mean(d1$height),
+b1=0,b2=0,b3=0,b4=0,b5=0,b6=0,
+sigma=sd(d1$height)))
+
+precis(m)
+
+plot( coeftab(m6,m) , pars=c("b1","b2","b3","b4","b5","b6") )
+
+
+age.seq <- seq( from=-2 , to=3 , length.out=30 )
+mu <- link( m , data=list(age=age.seq) )
+h <- sim( m , data=list(age=age.seq) )
+mu.mean <- apply( mu , 2 , mean)
+mu.ci <- apply( mu , 2 , PI )
+height.ci <- apply( h , 2 , PI )
+plot( height ~ age , d1 , col="slateblue" , xlim=c(-2,3) )
+lines( age.seq , mu.mean )
+shade( mu.ci , age.seq )
+shade( height.ci , age.seq )
+
+k <- coef(m)
+mu <- k['a'] + k['b1']*d2$age + k['b2']*d2$age^2 + k['b3']*d2$age^3 +
+k['b4']*d2$age^4 + k['b5']*d2$age^5 + k['b6']*d2$age^6
+dev <- (-2)*sum(
+dnorm(
+d2$height ,
+mean=mu ,
+sd=k['sigma'] ,
+log=TRUE ) )
+dev
+
+```
+
