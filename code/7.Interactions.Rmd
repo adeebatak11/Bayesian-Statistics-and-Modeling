@@ -1,0 +1,177 @@
+---
+title: "Interactions"
+output: pdf_document
+---
+
+## Building an interaction
+```{r}
+library(rethinking)
+library(tidyverse)
+data(rugged)
+d <- rugged %>% mutate(log_gdp = log(rgdppc_2000))
+
+dd <- d[complete.cases(d$rgdppc_2000),]
+
+d.A1 <- dd %>% filter(cont_africa == 1)
+d.A0 <- dd %>% filter(cont_africa == 0)
+
+m1 <- quap(
+  alist(
+    log_gdp~dnorm(mu, sigma),
+    mu <- a+br*rugged,
+    a~dnorm(8,100),
+    br~dnorm(0,1),
+    sigma~dunif(0,10)
+  ),
+  data = d.A1
+)
+
+m2 <- quap(
+  alist(
+    log_gdp~dnorm(mu, sigma),
+    mu <- a+br*rugged,
+    a~dnorm(8,100),
+    br~dnorm(0,1),
+    sigma~dunif(0,10)
+  ),
+  data = d.A0
+)
+
+post1 <- link(m1, data = d.A1)
+mean1 <- apply(post1, 2, mean)
+pi1 <-  apply(post1, 2, PI)
+
+post2 <- link(m2, data = d.A0)
+mean2 <- apply(post2, 2, mean)
+pi2 <-  apply(post2, 2, PI)
+
+plot_df1 <- data.frame(
+  rugged = d.A1$rugged,
+  log_rgdppc_2000 = d.A1$log_gdp,
+  mu     = mean1,
+  lower_mean  = pi1[1, ],
+  upper_mean  = pi1[2, ]
+)
+
+plot_df2 <- data.frame(
+  rugged = d.A0$rugged,
+  log_rgdppc_2000 = d.A0$log_gdp,
+  mu     = mean2,
+  lower_mean  = pi2[1, ],
+  upper_mean  = pi2[2, ]
+)
+
+library(ggplot2)
+ggplot(plot_df1, aes(x = rugged, y = log_rgdppc_2000)) +
+  geom_point() +   # shaded PI
+  geom_line(aes(y = mu), color = "blue", linewidth = 1) +
+  geom_ribbon(aes(ymin = lower_mean, ymax = upper_mean),
+              alpha = 0.2, fill = "red") +
+  labs(subtitle = "Africa")+
+  theme_minimal()
+
+ggplot(plot_df2, aes(x = rugged, y = log_rgdppc_2000)) +
+  geom_point() +   # shaded PI
+  geom_line(aes(y = mu), color = "blue", linewidth = 1) +
+  geom_ribbon(aes(ymin = lower_mean, ymax = upper_mean),
+              alpha = 0.2, fill = "red") +
+  labs(subtitle = "not Africa")+
+  theme_minimal()
+```
+
+We see below that even including the dummy var does not capture the relationship (ruggedness africa vs non-africa) as shown above. We see that a linear interaction does work though.
+```{r}
+m3 <- quap(
+  alist(
+    log_gdp~dnorm(mu, sigma),
+    mu <- a+br*rugged,
+    a~dnorm(8,100),
+    br~dnorm(0,1),
+    sigma~dunif(0,10)
+  ),
+  data = dd
+)
+
+m4 <- quap(
+  alist(
+    log_gdp~dnorm(mu, sigma),
+    mu <- a+br*rugged+ba*cont_africa,
+    a~dnorm(8,100),
+    br~dnorm(0,1),
+    ba~dnorm(0,1),
+    sigma~dunif(0,10)
+  ),
+  data = dd
+)
+
+compare(m3, m4)
+```
+Using linear interaction to recover the varied slopes for Africa and non-africa.
+```{r}
+m5 <- quap(
+  alist(
+    log_gdp~dnorm(mu, sigma),
+    mu <- a+gamma*rugged+b1*cont_africa,
+    gamma <- b2+b3*cont_africa,
+    a~dnorm(8,100),
+    c(b1,b2,b3)~ dnorm(0,1),
+    sigma~dunif(0,10)
+  ),
+  data = dd
+)
+
+compare(m3, m4, m5)
+
+rugged.seq <- seq(from = -1, to = 8, by = 0.25)
+mu.Africa <- link(m5, data = data.frame(cont_africa =1, rugged = rugged.seq))
+mu.NotAfrica <- link(m5, data = data.frame(cont_africa =0, rugged = rugged.seq))
+
+mu.Africa.mean <- apply(mu.Africa$mu, 2, mean)
+mu.NotAfrica.mean <- apply(mu.NotAfrica$mu, 2, mean)
+
+mu.Africa.PI <- apply(mu.Africa$mu, 2, PI, 0.97)
+mu.NotAfrica.PI <- apply(mu.NotAfrica$mu, 2, PI, 0.97)
+
+plot_df3 <- data.frame(
+  rugged = d.A1$rugged,
+  log_rgdppc_2000 = d.A1$log_gdp)
+
+library(ggplot2)
+ggplot(d.A1, aes(x = rugged, y = log_gdp)) +
+  geom_point() +
+  annotate("ribbon",
+           x = rugged.seq,
+           ymin = mu.Africa.PI[1, ],
+           ymax = mu.Africa.PI[2, ],
+           alpha = 0.2, fill = "red") +
+  annotate("path",
+           x = rugged.seq,
+           y = mu.Africa.mean,
+           linewidth = 1, color = "blue") +
+  labs(subtitle = "Africa")+
+  theme_minimal()
+
+ggplot(d.A0, aes(x = rugged, y = log_gdp)) +
+  geom_point() +
+  annotate("ribbon",
+           x = rugged.seq,
+           ymin = mu.NotAfrica.PI[1, ],
+           ymax = mu.NotAfrica.PI[2, ],
+           alpha = 0.2, fill = "red") +
+  annotate("path",
+           x = rugged.seq,
+           y = mu.NotAfrica.mean,
+           linewidth = 1, color = "blue") +
+  labs(subtitle = "Africa")+
+  theme_minimal()
+```
+Posterior distributions of gamma (slope relating terrain ruggedness to log-gdp) within and outside Africa:
+```{r}
+gamma.Africa <- apply(mu.Africa$gamma, 2, mean)
+gamma.NotAfrica <- apply(mu.NotAfrica$gamma, 2, mean)
+
+#prob that slope within africa is less than slope outside africa?
+diff <- gamma.Africa - gamma.NotAfrica 
+prob <- sum(diff<0)/length(diff)
+```
+
