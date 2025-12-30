@@ -742,4 +742,92 @@ log=TRUE ) )
 dev
 
 ```
+## 7H1
+```{r}
+library(rethinking)
+data(tulips)
+d <- tulips
+str(d)
+#making a dummy vars for categorical variable. For bed a, it will be absorbed into the intercept, and then the coefficients for each dummy variable will contain contrasts with bed a.
+d$bed_b <- ifelse( d$bed=="b" , 1 , 0 )
+d$bed_c <- ifelse( d$bed=="c" , 1 , 0 )
+d$water <- d$water-mean(d$water)
+d$shade <- d$shade-mean(d$shade)
+
+model1 <- quap(
+  alist(
+    blooms~dnorm(mu, sigma),
+    mu <- a + Bb*bed_b + Bc*bed_c + Bw*water + Bs*shade + Bws*water*shade,
+    a~dnorm(0, 100),
+    c(Bb, Bc, Bw, Bs, Bws)~dnorm(0, 100),
+    sigma~dunif(0, 100)
+  ),
+  start=list(a = 130, Bb = 0, Bc = 0, Bw = 0, Bs = 0, Bws = 0, sigma = 90),
+  data = d
+)
+precis(model1)
+```
+
+## 7H2
+```{r}
+library(rethinking)
+data(tulips)
+d <- tulips
+
+d$water <- d$water-mean(d$water)
+d$shade <- d$shade-mean(d$shade)
+
+model2 <- quap(
+  alist(
+    blooms~dnorm(mu, sigma),
+    mu <- a + Bw*water + Bs*shade + Bws*water*shade,
+    a~dnorm(0, 100),
+    c(Bw, Bs, Bws)~dnorm(0, 100),
+    sigma~dunif(0, 100)
+  ),
+  start=list(a = 130, Bw = 0, Bs = 0, Bws = 0, sigma = 90),
+  data = d
+)
+
+
+compare(model1, model2)
+```
+
+## 7H3
+```{r}
+library(rethinking)
+library(tidyverse)
+data(rugged)
+d <- rugged[complete.cases(rugged$rgdppc_2000),] %>% filter(country != "Seychelles") %>% mutate(log_gdp = log(rgdppc_2000), rugged_c = rugged - mean(rugged))
+
+model1 <- quap(
+  alist(log_gdp~dnorm(mean, sigma),
+        mean <- a + bA*cont_africa + bR*rugged_c + bAR*cont_africa*rugged_c,
+        a ~ dnorm(0, 100),
+        c(bA, bR, bAR)~dnorm(0, 10),
+        sigma~dunif(0, 50)
+  ),
+  data = d
+)
+```
+
+## 7H3
+```{r}
+library(rethinking)
+library(tidyverse)
+data(nettle)
+d <- nettle %>% mutate(lang.per.cap = num.lang/k.pop)
+d <- d[complete.cases(d$lang.per.cap), ] %>% mutate(log.lpc = log(lang.per.cap), mgs = mean.growing.season - mean(mean.growing.season), area = log(area))
+
+model1 <- quap(
+  alist(
+    log.lpc~dnorm(mu, sigma),
+    mu <- a + bM*mgs + bA*area,
+    a~dnorm(0, 100),
+    c(bM, bA)~dnorm(0, 10),
+    sigma~dunif(0, 10)
+  ),
+  data = d
+)
+```
 
