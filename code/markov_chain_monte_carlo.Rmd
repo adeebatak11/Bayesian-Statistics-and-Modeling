@@ -1,0 +1,224 @@
+---
+title: "Markov Chain Monte Carlo"
+output: html_document
+---
+
+```{r}
+library(rethinking)
+library(tidyverse)
+library(rstan)
+data(rugged)
+d <- rugged %>% mutate(log_gdp = log(rgdppc_2000))
+dd <- d[complete.cases(d$rgdppc_2000),]
+```
+
+```{r}
+m1 <- quap(
+    alist(
+        log_gdp ~ dnorm( mu , sigma ) ,
+        mu <- a + bR*rugged + bA*cont_africa + bAR*rugged*cont_africa,
+        a ~ dnorm( 0 , 100 ) ,
+        c(bR, bA, bAR) ~ dnorm( 0 , 10 ) ,
+        sigma ~ dunif( 0,10 )
+    ) , data=dd )
+precis(m1)
+```
+
+Stan needs all transformed variables pre-calculated and a data frame trimmed to only he vars that are being used in the model.
+
+```{r}
+library(rethinking)
+data(rugged)
+d <- rugged
+d$log_gdp <- log(d$rgdppc_2000)
+dd <- d[ complete.cases(d$rgdppc_2000) , ]
+dd$log_gdp_std <- dd$log_gdp / mean(dd$log_gdp)
+dd$rugged_std <- dd$rugged / max(dd$rugged)
+dd$cid <- ifelse( dd$cont_africa==1 , 1 , 2 )
+
+dat_slim <- list(
+log_gdp_std = dd$log_gdp_std,
+rugged_std = dd$rugged_std,
+cid = as.integer( dd$cid )
+)
+set_ulam_cmdstan(TRUE)
+m9.1 <- ulam(
+alist(
+log_gdp_std ~ dnorm( mu , sigma ) ,
+mu <- a[cid] + b[cid]*( rugged_std - 0.215 ) ,
+a[cid] ~ dnorm( 1 , 0.1 ) ,
+b[cid] ~ dnorm( 0 , 0.3 ) ,
+sigma ~ dexp( 1 )
+) , data=dat_slim , chains=1)
+
+precis(m9.1, depth = 2)
+```
+
+To run four independent Markov chains for the model above, and to distribute them across separate cores
+in one's computer, just increase the number of chains and add a cores argument.
+```{r}
+m9.1 <- ulam(
+alist(
+log_gdp_std ~ dnorm( mu , sigma ) ,
+mu <- a[cid] + b[cid]*( rugged_std - 0.215 ) ,
+a[cid] ~ dnorm( 1 , 0.1 ) ,
+b[cid] ~ dnorm( 0 , 0.3 ) ,
+sigma ~ dexp( 1 )
+) , data=dat_slim , chains=4 , cores=4 )
+
+precis(m9.1, depth = 2, window = )
+```
+
+show() will remind you of the model formula and also how long each chain took to run:
+```{r}
+show( m9.1 )
+```
+Visualization
+
+1. Trace plot: A trace plot merely plots the samples in sequential order, joined by a line. Looking at the trace plot of each parameter is often the best thing for diagnosing common problems. And once you come to recognize a healthy, functioning Markov chain, quick checks of trace plots provide a lot of peace of mind. A trace plot isn’t the last thing analysts do to inspect MCMC output. But it’s often the first.
+
+note: We use window = c(400, 1000) here to avoid the first 400 values in warmup as they were causing spikes and distorting the traceplot. Note that the first half of the iterations (n=500) is warmup (the grey area: mcmc learning from priors) and doesn't provide suitable or reliable inferences. extract.samples() exludes these by default.
+```{r}
+# bivariate plots
+pairs(m9.1)
+
+#diagnostics (look for "healthy" chains)
+traceplot(m9.1, chains = 1,  window = c(400, 1000))
+```
+Now, how is this chain a healthy one? Typically we look for three things in these trace plots: (1) stationarity, (2) good mixing, and (3) convergence. Stationarity refers to the path of each chain staying within the same high-probability portion of the posterior distribution. Notice that these traces, for example, all stick around a very stable central tendency, the center of gravity of each dimension of the posterior. Another way to think of this is that
+the mean value of the chain is quite stable from beginning to end. Good mixing means that the chain rapidly explores the full region. It doesn’t slowly wander, but rather rapidly zig-zags around, as a good Hamiltonian chain should. Convergence  means that multiple, independent chains stick around the same region of high probability.
+
+2. Trank plot/Trace Rank plot: What this means is to take all the samples for each individual parameter and rank them. The lowest sample gets rank 1.
+The largest gets the maximum rank (the number of samples across all chains). Then we draw
+a histogram of these ranks for each individual chain. Why do this? Because if the chains
+are exploring the same space efficiently, the histograms should be similar to one another and
+relatively uniform. The axes are not labeled in these plots, to reduce clutter. But the horizontal is rank, from 1 to the number of samples across all chains (2000 in this example). The vertical axis is the frequency of ranks in each bin of the histogram. This trank plot is what we hope for: Histograms that overlap and stay within the same range.
+```{r}
+trankplot( m9.1 , n_cols=2)
+
+```
+How many chains to use?
+For typical regression models, you can live by the motto one short chain to debug, four chains for
+verification and inference.
+
+example:
+```{r}
+library(rethinking)
+
+y <- c(-1,1)
+set.seed(11)
+m9.2 <- ulam(
+alist(
+y ~ dnorm( mu , sigma ) ,
+mu <- alpha ,
+alpha ~ dnorm( 0 , 1000 ) ,
+sigma ~ dexp( 0.0001 )
+) , data=list(y=y) , chains=3, cores = 3 )
+
+precis(m9.2)
+```
+
+We may see these warnings: 
+
+1:
+"97 of 1500 (6.0%) transitions ended with a divergence."
+
+Stan detected problems in exploring all of the posterior. These are divergent transitions. For simple models, increasing the adapt_delta control parameter will usually
+remove the divergent transitions
+
+2:
+"Examine the pairs() plot to diagnose sampling problems"
+This refers to Stan’s pairs method, not ulam’s. To use it, try pairs( m9.2@stanfit ).
+
+The reason for the weird estimates is that the Markov chains seem to drift around and spike occasionally to extreme values. This is not a healthy pair of chains,
+and they do not provide useful samples. The trankplot(m9.2) is also shown. The rank histograms spend long periods with one chain above or below the others. This indicates
+poor exploration of the posterior.
+```{r}
+rethinking::traceplot(m9.2, window = c(200, 1000))
+rethinking::trankplot(m9.2, window = c(200, 1000))
+```
+
+It’s easy to tame this particular chain by using weakly informative priors. The reason
+the model above drifts wildly in both dimensions is that there is very little data, just two
+observations, and flat priors. The flat priors say that every possible value of the parameter
+is equally plausible, a priori. For parameters that can take a potentially infinite number of
+values, like alpha, this means the Markov chain needs to occasionally sample some pretty
+extreme and implausible values, like negative 30 million. These extreme drifts overwhelm
+the chain. If the likelihood were stronger, then the chain would be fine, because it would
+stick closer to zero.
+
+```{r}
+set.seed(11)
+m9.3 <- ulam(
+alist(
+y ~ dnorm( mu , sigma ) ,
+mu <- alpha ,
+alpha ~ dnorm( 1 , 10 ) ,
+sigma ~ dexp( 1 )
+) , data=list(y=y) , chains=3, cores = 3 )
+precis( m9.3 )
+
+rethinking::traceplot(m9.3)
+rethinking::trankplot(m9.3)
+
+```
+
+The trace and trank plots look healthy. Both chains are stationary around the same values, and mixing is good. No more wild detours into the thousands. And those divergent transitions are gone.
+
+Lots of problematic chains want subtle priors like these, designed to tune estimation by assuming a tiny bit of prior information about each parameter. And even though the priors end up getting washed out right away—two observations were enough here—they still have a big effect on inference, by allowing us to get an answer. That answer is also a good answer. This point will be even more important for non-Gaussian models to come.
+
+
+### The problem of highly correlated predictors and the non-identifiable parameters they can create
+
+Constructing a non-identifiable model
+```{r}
+set.seed(41) 
+y <- rnorm( 100 , mean=0 , sd=1 )
+
+set.seed(384)
+m9.4 <- ulam(
+alist(
+y ~ dnorm( mu , sigma ) ,
+mu <- a1 + a2 ,
+a1 ~ dnorm( 0 , 1000 ),
+a2 ~ dnorm( 0 , 1000 ),
+sigma ~ dexp( 1 )
+) , data=list(y=y) , chains=3 )
+precis( m9.4 )
+```
+
+Those estimates look suspicious, and the n_eff and Rhat values are terrible. The means for a1 and a2 are about the same distance from zero, but on opposite sides of zero. And the standard deviations are massive. This is a result of the fact that we cannot simultaneously estimate a1 and a2, but only their sum.
+
+Warning messages:
+1: "1139 of 1500 (76.0%) transitions hit the maximum treedepth limit of 10."
+
+This means the chains are inefficient, because some internal limit was reached. These treedepth warnings usually indicate inefficient chains, but not necessarily broken chains.
+
+```{r}
+rethinking::traceplot(m9.4)
+rethinking::trankplot(m9.4)
+```
+
+These chains do not look like they are stationary, nor
+do they seem to be mixing very well. Indeed, when you see a pattern like this, it is reason to worry. Don’t use these samples. Again, weakly regularizing priors can rescue us.
+
+```{r}
+m9.5 <- ulam(
+alist(
+y ~ dnorm( mu , sigma ) ,
+mu <- a1 + a2 ,
+a1 ~ dnorm( 0 , 10 ),
+a2 ~ dnorm( 0 , 10 ),
+sigma ~ dexp( 1 )
+) , data=list(y=y) , chains=3 , cores = 3)
+precis( m9.5 )
+```
+```{r}
+rethinking::traceplot(m9.5)
+rethinking::trankplot(m9.5)
+```
+
+The estimates for a1 and a2 are better identified now. Well, they still aren’t individually identified. But their sum is identified.
+
+Often, a model that is very slow to sample is
+under-identified. This is an aspect of something Bayesian statistician Andrew Gelman calls the folk theorem of statistical computing: When you are having trouble fitting a model, it often indicates a bad model.
