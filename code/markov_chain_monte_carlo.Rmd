@@ -220,5 +220,252 @@ rethinking::trankplot(m9.5)
 
 The estimates for a1 and a2 are better identified now. Well, they still aren’t individually identified. But their sum is identified.
 
-Often, a model that is very slow to sample is
-under-identified. This is an aspect of something Bayesian statistician Andrew Gelman calls the folk theorem of statistical computing: When you are having trouble fitting a model, it often indicates a bad model.
+Often, a model that is very slow to sample is under-identified. This is an aspect of something Bayesian statistician Andrew Gelman calls the folk theorem of statistical computing: When you are having trouble fitting a model, it often indicates a bad model.
+
+
+The effect number of samples n_eff is an estimate of the number of completely independent samples that would hold equivalent information about the posterior distribution. It is always smaller than the actual number of samples, because samples from a Markov chain tend to sequentially correlated or autocorrelated. As autocorrelation rises, n_eff gets smaller. At the limit of perfect autocorrelation, for example, all samples would have the same value and n_eff would be equal to 1, no matter the actual number of samples drawn.
+
+### Practice
+
+**9M1**
+
+```{r}
+library(rethinking)
+library(tidyverse)
+library(rstan)
+set_ulam_cmdstan(TRUE)
+
+data(rugged)
+d <- rugged
+d$log_gdp <- log(d$rgdppc_2000)
+dd <- d[ complete.cases(d$rgdppc_2000) , ]
+dd$log_gdp_std <- dd$log_gdp / mean(dd$log_gdp)
+dd$rugged_std <- dd$rugged / max(dd$rugged)
+dd$cid <- ifelse( dd$cont_africa==1 , 1 , 2 )
+
+dat_slim <- list(
+log_gdp_std = dd$log_gdp_std,
+rugged_std = dd$rugged_std,
+cid = as.integer( dd$cid )
+)
+
+m9M1uni <- ulam(
+alist(
+log_gdp_std ~ dnorm( mu , sigma ) ,
+mu <- a[cid] + b[cid]*( rugged_std - 0.215 ) ,
+a[cid] ~ dnorm( 1 , 0.1 ) ,
+b[cid] ~ dnorm( 0 , 0.3 ) ,
+sigma ~ dunif( 0,10)
+) , data=dat_slim , chains=1)
+
+m9Mexp <- ulam(
+alist(
+log_gdp_std ~ dnorm( mu , sigma ) ,
+mu <- a[cid] + b[cid]*( rugged_std - 0.215 ) ,
+a[cid] ~ dnorm( 1 , 0.1 ) ,
+b[cid] ~ dnorm( 0 , 0.3 ) ,
+sigma ~ dexp( 1 )
+) , data=dat_slim , chains=1)
+
+precis(m9M1uni, depth = 2)
+precis(m9Mexp, depth = 2)
+
+
+#plotting the priors
+curve( dunif(x,0,10) , from=0 , to=10 ,
+xlab="sigma" , ylab="Density" , ylim=c(0,1) , col="red" )
+curve( dexp(x,1) , add=TRUE , col="blue" )
+
+#plotting the posterior
+Plot_df <- data.frame(
+  Posteriors = c(
+    extract.samples(m9Mexp, n = 1e4)$sigma,
+    extract.samples(m9M1uni, n = 1e4)$sigma
+  ),
+  Name = rep(c("Exp", "Uni"), each = 1e4),
+  Model = rep(c("m.M1Exp", "m.M1Uni"), each = 1e4)
+)
+
+library(ggdist)
+ggplot(Plot_df, aes(y = Model, x = Posteriors)) +
+  stat_halfeye() +
+  labs(x = "Parameter Estimate", y = "Model") +
+  theme_bw()
+
+```
+The posterior distributions are very similar. Why? There’s a lot of data, relative to the difference
+in priors. The next problem asks you to explore what happens when you make them stronger.
+
+### 9M2
+
+```{r}
+library(rethinking)
+library(tidyverse)
+library(rstan)
+set_ulam_cmdstan(TRUE)
+
+data(rugged)
+d <- rugged
+d$log_gdp <- log(d$rgdppc_2000)
+dd <- d[ complete.cases(d$rgdppc_2000) , ]
+dd$log_gdp_std <- dd$log_gdp / mean(dd$log_gdp)
+dd$rugged_std <- dd$rugged / max(dd$rugged)
+dd$cid <- ifelse( dd$cont_africa==1 , 1 , 2 )
+
+dat_slim <- list(
+log_gdp_std = dd$log_gdp_std,
+rugged_std = dd$rugged_std,
+cid = as.integer( dd$cid )
+)
+
+mE.1 <- ulam(
+alist(
+log_gdp_std ~ dnorm( mu , sigma ) ,
+mu <- a[cid] + b[cid]*( rugged_std - 0.215 ) ,
+a[cid] ~ dnorm( 1 , 0.1 ) ,
+b[cid] ~ dnorm( 0 , 0.3 ) ,
+sigma ~ dexp( 1 )
+) , data=dat_slim , chains=2, cores = 2)
+
+
+mE.2 <- ulam(
+alist(
+log_gdp_std ~ dnorm( mu , sigma ) ,
+mu <- a[cid] + b[cid]*( rugged_std - 0.215 ) ,
+a[cid] ~ dnorm( 1 , 0.1 ) ,
+b[cid] ~ dnorm( 0 , 0.3 ) ,
+sigma ~ dexp( 100)
+) , data=dat_slim , chains=2, cores = 2)
+
+
+mE.3 <- ulam(
+alist(
+log_gdp_std ~ dnorm( mu , sigma ) ,
+mu <- a[cid] + b[cid]*( rugged_std - 0.215 ) ,
+a[cid] ~ dnorm( 1 , 0.1 ) ,
+b[cid] ~ dnorm( 0 , 0.3 ) ,
+sigma ~ dexp( 1000)
+) , data=dat_slim , chains=1, cores = 2)
+
+#plotting the posterior: exp
+sigma_1 <- extract.samples(mE.1)$sigma
+sigma_2 <- extract.samples(mE.2)$sigma
+sigma_3 <- extract.samples(mE.3)$sigma
+dens( sigma_1 , xlab="sigma", xlim = c(0.05, 0.14))
+dens( sigma_2, add=TRUE , lty=2 )
+dens( sigma_3 , add=TRUE , lty=3 )
+```
+### 9M3
+```{r}
+library(rethinking)
+library(tidyverse)
+library(rstan)
+set_ulam_cmdstan(TRUE)
+
+data(rugged)
+d <- rugged
+d$log_gdp <- log(d$rgdppc_2000)
+dd <- d[ complete.cases(d$rgdppc_2000) , ]
+dd$log_gdp_std <- dd$log_gdp / mean(dd$log_gdp)
+dd$rugged_std <- dd$rugged / max(dd$rugged)
+dd$cid <- ifelse( dd$cont_africa==1 , 1 , 2 )
+
+dat_slim <- list(
+log_gdp_std = dd$log_gdp_std,
+rugged_std = dd$rugged_std,
+cid = as.integer( dd$cid )
+)
+
+m1 <- ulam(
+alist(
+log_gdp_std ~ dnorm( mu , sigma ) ,
+mu <- a[cid] + b[cid]*( rugged_std - 0.215 ) ,
+a[cid] ~ dnorm( 1 , 0.1 ) ,
+b[cid] ~ dnorm( 0 , 0.3 ) ,
+sigma ~ dexp( 1 )
+) , data=dat_slim , chains=2, cores = 2, warmup = 10)
+
+rethinking::traceplot(m2)
+m2 <- ulam(
+alist(
+log_gdp_std ~ dnorm( mu , sigma ) ,
+mu <- a[cid] + b[cid]*( rugged_std - 0.215 ) ,
+a[cid] ~ dnorm( 1 , 0.1 ) ,
+b[cid] ~ dnorm( 0 , 0.3 ) ,
+sigma ~ dexp( 1 )
+) , data=dat_slim , chains=2, cores = 2, warmup = 100)
+```
+```{r}
+mp <- ulam(
+  alist(
+    a ~ dnorm(0, 1),
+    b ~ dcauchy(0, 1)
+  ),
+  data = list(y = 1),
+  start = list(a = 0, b = 0),
+  iter = 1e4,
+  chains = 2, cores = 2,
+  warmup = 100
+)
+precis(mp)
+samples <- extract.samples(mp)
+
+rethinking::traceplot(mp)
+```
+
+###9H2
+```{r}
+data(WaffleDivorce)
+d <- WaffleDivorce
+d$D <- standardize(d$Divorce)
+d$M <- standardize(d$Marriage)
+d$A <- standardize(d$MedianAgeMarriage)
+d_trim <- list(D = d$D, M = d$M, A = d$A)
+
+m5.1_stan <- ulam(
+  alist(
+    D ~ dnorm(mu, sigma),
+    mu <- a + bA * A,
+    a ~ dnorm(0, 0.2),
+    bA ~ dnorm(0, 0.5),
+    sigma ~ dexp(1)
+  ),
+  data = d_trim,
+  chains = 4, cores = 4,
+  log_lik = TRUE # this is needed to get the terms for calculating PSIS or WAIC
+)
+m5.2_stan <- ulam(
+  alist(
+    D ~ dnorm(mu, sigma),
+    mu <- a + bM * M,
+    a ~ dnorm(0, 0.2),
+    bM ~ dnorm(0, 0.5),
+    sigma ~ dexp(1)
+  ),
+  data = d_trim,
+  chains = 4, cores = 4,
+  log_lik = TRUE # this is needed to get the terms for calculating PSIS or WAIC
+)
+m5.3_stan <- ulam(
+  alist(
+    D ~ dnorm(mu, sigma),
+    mu <- a + bA * A + bM * M,
+    a ~ dnorm(0, 0.2),
+    bA ~ dnorm(0, 0.5),
+    bM ~ dnorm(0, 0.5),
+    sigma ~ dexp(1)
+  ),
+  data = d_trim,
+  chains = 4, cores = 4,
+  log_lik = TRUE # this is needed to get the terms for calculating PSIS or WAIC
+)
+
+compare(m5.1_stan, m5.2_stan, m5.3_stan, func = PSIS)
+compare(m5.1_stan, m5.2_stan, m5.3_stan, func = WAIC)
+```
+
+###9H3
+```{r}
+
+```
+
