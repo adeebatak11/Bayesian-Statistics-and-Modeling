@@ -466,6 +466,67 @@ compare(m5.1_stan, m5.2_stan, m5.3_stan, func = WAIC)
 
 ###9H3
 ```{r}
+library(rethinking)
+N <- 100 # number of individuals
+height <- rnorm(N,10,2) # sim total height of each
+leg_prop <- runif(N,0.4,0.5) # leg as proportion of height
+leg_left <- leg_prop*height + # sim left leg as proportion + error
+rnorm( N , 0 , 0.02 )
+leg_right <- leg_prop*height + # sim right leg as proportion + error
+rnorm( N , 0 , 0.02 )
+# combine into data frame
+d <- data.frame(height,leg_left,leg_right)
 
+m5.8s <- ulam(
+alist(
+height ~ dnorm( mu , sigma ) ,
+mu <- a + bl*leg_left + br*leg_right ,
+a ~ dnorm( 10 , 100 ) ,
+bl ~ dnorm( 2 , 10 ) ,
+br ~ dnorm( 2 , 10 ) ,
+sigma ~ dexp( 1 )
+) ,
+data=d, chains=4,cores= 4,log_lik=TRUE,
+start=list(a=10,bl=0,br=0.1,sigma=1) )
+
+m5.8s2 <- ulam(
+alist(
+height ~ dnorm( mu , sigma ) ,
+mu <- a + bl*leg_left + br*leg_right ,
+a ~ dnorm( 10 , 100 ) ,
+bl ~ dnorm( 2 , 10 ) ,
+br ~ dnorm( 2 , 10 ) ,
+sigma ~ dexp( 1 )
+) ,
+data=d, chains=4,cores= 4,log_lik=TRUE,
+constraints=list(br="lower=0"),
+start=list(a=10,bl=0,br=0.1,sigma=1) )
+
+s1 <- extract.samples(m5.8s,  n = 1e4)$sigma
+s2 <- extract.samples(m5.8s2, n = 1e4)$sigma
+
+library(tidyverse)
+df <- tibble(
+  sigma = c(s1, s2),
+  model = factor(
+    rep(c("m5.8s", "m5.8s2"), times = c(length(s1), length(s2))),
+    levels = c("m5.8s", "m5.8s2")
+  )
+)
+
+ggplot(df, aes(x = sigma, color = model)) +
+  geom_density(linewidth = 1) +
+  scale_color_manual(values = c("m5.8s" = "blue", "m5.8s2" = "red")) +
+  labs(x = expression(sigma), y = "Density", color = NULL) +
+  theme_minimal()
+
+pairs(m5.8s)
+pairs(m5.8s2)
 ```
+
+###9H4
+```{r}
+compare(m5.8s, m5.8s2, func = WAIC)
+```
+
 
